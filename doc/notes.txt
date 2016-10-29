@@ -1,0 +1,11 @@
+Details on the format of the GPT (chapter 5, pg 165):
+http://www.uefi.org/sites/default/files/resources/UEFI%20Spec%202_6.pdf
+
+If you want to know how to compute the CRC-32 being used.  Note the
+crc32() function from zlib is used (since this matches what is used):
+http://web.archive.org/web/20080303102530/http://c.snippets.org/code/
+http://web.archive.org/web/20080303102530/http://c.snippets.org/code/crc.txt
+
+Setting a CRC-32 to a chosen value: (includes sample C implementation)
+https://www.nayuki.io/page/forcing-a-files-crc-to-any-value
+
