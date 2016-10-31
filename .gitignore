@@ -1,0 +1,10 @@
+# Conventional location for output executables
+/bin/
+# Where the Android NDK dumps output executables
+/libs/
+# Conventional location for intermediate build files
+/obj/
+# Python 3 cache files
+__pycache__/
+# Python 2 cache files
+*.pyc
