@@ -195,9 +195,7 @@ def setDevice(name, device, setFactory):
 	file.seek(kdz_offset, io.SEEK_SET)
 	file.write(nename)
 
-	entry = list()
-	for i in dz_entry:
-		entry.append(i)
+	entry = [x for x in dz_entry]
 
 	entry[4] = ("LG-" + device).ljust(32, b'\x00')
 
