@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 {
 	enum {DEFAULT, REPLACE, MERGE} action=DEFAULT;
 	bool testonly=false;
-	int opt, i;
+	int opt;
 	struct gpt_data *devpri=NULL, *devsec=NULL, *newpri=NULL, *newsec=NULL;
 	int dev, new0, new1=-1;
 
@@ -101,21 +101,29 @@ int main(int argc, char **argv)
 		exit(64);
 	}
 
-	if(!(devpri=loadgpt(dev, GPT_PRIMARY))) {
-		printf("failed to open device primary GPT\n");
+	if(!(devpri=readgpt(dev, GPT_PRIMARY))) {
+		printf("failed to load device primary GPT\n");
 	}
-	if(!(devsec=loadgpt(dev, GPT_BACKUP))) {
-		printf("failed to open device backup GPT\n");
+	if(!(devsec=readgpt(dev, GPT_BACKUP))) {
+		printf("failed to load device backup GPT\n");
 	}
+	if(!devpri||!devsec) exit(128);
 
-	if(!(newpri=loadgpt(new0, GPT_ANY))) {
+	if(!(newpri=readgpt(new0, GPT_ANY))) {
 		printf("failed to open new primary GPT\n");
 	}
-	if((new1>0)&&!(newsec=loadgpt(new1, GPT_ANY))) {
+	if((new1>0)&&!(newsec=readgpt(new1, GPT_ANY))) {
 		printf("failed to open new backup GPT\n");
 	}
 
+	/* might suggest overwritten with differing size image, a distinct issue*/
+	if(!comparegpt(devpri, devsec)) printf("Device primary and backup GPTs differ!\n");
 
+	if(newsec&&!comparegpt(newpri, newsec)) printf("Primary and backup GPTs to install differ!\n");
+
+	if(comparegpt(devpri, newpri)) printf("Device GPTs and GPTs to install are identical!\n");
+
+	if(testonly) printf("foo\n");
 
 /* UEFI specification, write backupGPT first, primaryGPT second */
 	return 0;
