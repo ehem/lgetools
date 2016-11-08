@@ -24,6 +24,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <search.h>
+#include <termios.h>
 
 #include "gpt.h"
 
@@ -31,29 +34,45 @@
 int verbose=0;
 
 
+static bool mergegpt(int, struct gpt_data **, const struct gpt_data *);
+static bool hybridgpt(int, struct gpt_data **, const struct gpt_data *);
+static bool replacegpt(int, struct gpt_data **, const struct gpt_data *);
+
+
 int main(int argc, char **argv)
 {
-	enum {DEFAULT, REPLACE, MERGE} action=DEFAULT;
+	enum {DEFAULT, REPLACE, MERGE, HYBRID} action=DEFAULT;
 	bool testonly=false;
 	int opt;
 	struct gpt_data *devpri=NULL, *devsec=NULL, *newpri=NULL, *newsec=NULL;
+	struct gpt_data *devnew;
 	int dev, new0, new1=-1;
+	bool (*mergefunc)(int, struct gpt_data **, const struct gpt_data *);
 
-	while((opt=getopt(argc, argv, "hrmtvq"))!=-1) {
+	while((opt=getopt(argc, argv, "hrmMtvq"))!=-1) {
 		switch(opt) {
 		case 'r':
 			if(action!=DEFAULT) {
-				fprintf(stderr, "Only one of -m and -r can be used!\n");
+				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
 				exit(128);
 			}
 			action=REPLACE;
 			break;
 		case 'm':
 			if(action!=DEFAULT) {
-				fprintf(stderr, "Only one of -m and -r can be used!\n");
+				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
 				exit(128);
 			}
 			action=MERGE;
+			break;
+		case 'M':
+			if(action!=DEFAULT) {
+				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
+				exit(128);
+			}
+			action=HYBRID;
+			fprintf(stderr, "\nCurrently hybrid mode is unimplemented and not yet functional, sorry\n");
+			exit(1);
 			break;
 		case 't':
 			testonly=true;
@@ -70,6 +89,7 @@ int main(int argc, char **argv)
 "optional arguments:\n"
 "  -h, --help            show this help message and exit\n"
 "  -m                    merge GPT copies in\n"
+"  -M                    intermediate merge, incoming has more effect\n"
 "  -r                    replace GPT on device with GPT images from .bin files"
 "\n", argv[0]);
 			exit(opt=='h'?0:128);
@@ -116,16 +136,270 @@ int main(int argc, char **argv)
 		printf("failed to open new backup GPT\n");
 	}
 
-	/* might suggest overwritten with differing size image, a distinct issue*/
-	if(!comparegpt(devpri, devsec)) printf("Device primary and backup GPTs differ!\n");
+	if(newsec) {
+		if(!comparegpt(newpri, newsec)) {
+			printf("Error: Primary and backup GPTs to install differ!\n");
+			exit(1);
+		}
+		if(newpri->head.myLBA==newsec->head.myLBA) {
+			fprintf(stderr, "Error: Both primary and backup GPT files appear to be from same media region!\n");
+			exit(1);
+		}
+	}
 
-	if(newsec&&!comparegpt(newpri, newsec)) printf("Primary and backup GPTs to install differ!\n");
+	/* might suggest overwritten with differing size image, be wary */
+	if(!comparegpt(devpri, devsec)) {
+		const char *const fmt="Device primary and backup GPTs differ!\n%s";
+		if(comparegpt(devsec, newpri)) {
+			devnew=devpri;
+			printf(fmt, "You appear to be reinstalling a copy of the backup.\n");
+		} else if(comparegpt(devpri, newpri)) {
+			devnew=devsec;
+			printf(fmt, "You appear to be reinstalling a copy of the primary.\n");
+		} else {
+			char buf[512];
+			printf(fmt, "Danger!  GPT to install does not match either device GPT!\n\nAre you SURE you wish to continue? (must type \"yes\")\n");
+			fgets(buf, sizeof(buf), stdin);
+			if(!strcasecmp(buf, "yes\n")) {
+				printf("Not confirmed, terminating\n");
+				exit(64);
+			}
+		}
 
-	if(comparegpt(devpri, newpri)) printf("Device GPTs and GPTs to install are identical!\n");
+	/* I don't know why you'd want to do this, but doesn't seem harmful...*/
+	} else if(comparegpt(devpri, newpri)) {
+		printf("Device GPTs and GPTs to install are identical!\n");
+		devnew=devpri;
+	} else devnew=devpri;
 
-	if(testonly) printf("foo\n");
+	/* writegpt() will fail in this case, but not give a message */
+	if(lseek(dev, -(newpri->head.myLBA+newpri->head.altLBA)*devpri->blocksz, SEEK_END)!=0) {
+		fprintf(stderr, "Primary and/or backup GPT LBAs do not match size of media, cannot continue.\n");
+		exit(128);
+	}
 
-/* UEFI specification, write backupGPT first, primaryGPT second */
+	if(testonly) {
+		close(dev);
+		dev=-1;
+	}
+
+	switch(action) {
+	case DEFAULT:
+	case MERGE:
+		mergefunc=mergegpt;
+	break;
+	case REPLACE:
+		mergefunc=replacegpt;
+	break;
+	case HYBRID:
+		mergefunc=hybridgpt;
+	break;
+	default:
+		fprintf(stderr, "%s: Internal error!", argv[0]);
+		exit(-1);
+	}
+
+	if(!mergefunc(dev, &devnew, newpri)) exit(2);
+
+	printf("A merged GPT has been successfully created.  This process has "
+"a substantial\n" "chance of producing incorrect results, even though care has "
+"been taken to make\n" "the process work.\n"
+"Are you sure you wish to write the new GPT to the target? (y/n)\n");
+
+	setvbuf(stdin, NULL, _IONBF, 0);
+	{
+		struct termios termios;
+		tcgetattr(fileno(stdin), &termios);
+		termios.c_lflag&=~ICANON;
+		termios.c_cc[VMIN]=1;
+		termios.c_cc[VTIME]=0;
+		tcsetattr(fileno(stdin), TCSANOW, &termios);
+	}
+
+	opt=getchar();
+	if(opt!='y') {
+		printf("\nNot confirmed, terminating\n");
+		exit(1);
+	}
+	putchar('\n');
+
+	if(dev>=0) writegpt(dev, devnew);
+	else printf("...simulate writing to media...\n");
+
 	return 0;
+}
+
+
+static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+{
+	int i;
+	int empty=0;
+	struct gpt_data *dev=*_dev;
+	char *visited=NULL;
+
+	/* we copy these fields since we could be reinstalling a F600S GPT,
+	** which has a slightly different amount of space */
+	dev->head.myLBA=new->head.myLBA;
+	dev->head.altLBA=new->head.altLBA;
+	dev->head.dataStartLBA=new->head.dataStartLBA;
+	dev->head.dataEndLBA=new->head.dataEndLBA;
+	dev->head.entryStart=new->head.entryStart;
+
+
+	/* have to worry if the older one had less space for entries */
+	if(dev->head.entryCount<new->head.entryCount) {
+		dev=realloc(dev, sizeof(struct gpt_data)+sizeof(struct gpt_entry)*new->head.entryCount);
+		if(!dev) {
+			fprintf(stderr, "Failed allocating memory, sorry\n");
+			return false;
+		}
+		*_dev=dev;
+	}
+
+	if(!(visited=malloc((new->head.entryCount+7)>>3))) {
+		fprintf(stderr, "Failed allocating memory, sorry\n");
+		return false;
+	}
+	memset(visited, 0, (new->head.entryCount+7)>>3);
+
+	if(!hcreate(new->head.entryCount+(new->head.entryCount>>1))) {
+		fprintf(stderr, "Failed trying to create hash table\n");
+		goto fail;
+	}
+
+	for(i=0; i<new->head.entryCount; ++i) {
+		ENTRY e;
+		if(uuid_is_null(new->entry[i].type)||uuid_is_null(new->entry[i].id)) continue;
+
+		e.key=new->entry[i].name;
+		e.data=new->entry+i;
+		if(!hsearch(e, ENTER)) {
+			fprintf(stderr, "Failed adding entry to hash table\n");
+			goto fail;
+		}
+	}
+
+	for(i=0; i<dev->head.entryCount; ++i) {
+		ENTRY *e, es;
+		struct gpt_entry *g;
+		char buf[128];
+		if(uuid_is_null(dev->entry[i].type)||uuid_is_null(dev->entry[i].id)) continue;
+
+		es.key=dev->entry[i].name;
+		if(!(e=hsearch(es, FIND))) {
+			fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
+			goto fail;
+		}
+
+		g=e->data;
+
+		visited[(g-new->entry)>>3]|=1<<((g-new->entry)&7);
+
+		if(uuid_compare(g->type, dev->entry[i].type)) {
+			fprintf(stderr, "ERROR: Type UUID differs for slice named \"%s\", cannot continue\n", dev->entry[i].name);
+			goto fail;
+		}
+
+		if(g->flags!=dev->entry[i].flags) {
+			fprintf(stderr, "ERROR: Flags differ for slice named \"%s\", cannot continue\n", dev->entry[i].name);
+			goto fail;
+		}
+
+		if((g->startLBA==dev->entry[i].startLBA)&&(g->endLBA==dev->entry[i].endLBA)) continue;
+
+		/* problematic situation, start and/or end differ, be wary */
+
+		dev->entry[i].startLBA=g->startLBA;
+		dev->entry[i].endLBA=g->endLBA;
+
+		/* these 3 are known to move and reasonably safe to adjust */
+		if(g->name[0]=='c') {
+			if(!strcmp(g->name, "cache")) continue;
+		} else if(!strcmp(g->name, "userdata")) continue;
+
+		if(!strcmp(g->name+strlen(g->name)-3, "bak")) {
+			fprintf(stderr, "ERROR: Need to move slice \"%s\", which is likely part of bootloader, fail\n", g->name);
+			goto fail;
+		}
+
+		fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n", g->name);
+
+		fgets(buf, sizeof(buf), stdin);
+		if(!strcasecmp(buf, "yes\n")) {
+			printf("Not confirmed, terminating\n");
+			return false;
+		}
+	}
+
+	/* copy in any extra slices needed by replacement image */
+	for(i=0; i<new->head.entryCount; ++i) {
+		/* original already has such entry */
+		if(visited[(unsigned)i>>3]&1<<(i&7)) continue;
+
+		while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id)) ++empty;
+
+		dev->entry[empty]=new->entry[i];
+	}
+
+/*
+TODO: convert to raw format, compute CRC to match unadjusted image
+*/
+
+	hdestroy();
+
+	free(visited);
+
+	return true;
+
+fail:
+	hdestroy();
+	if(visited) free(visited);
+	return false;
+}
+
+
+static bool hybridgpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+{
+	int i;
+	struct gpt_data *dev=*_dev;
+
+/* use ordering from incoming */
+	return false;
+//	return true;
+}
+
+
+static bool replacegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+{
+	int i;
+	struct gpt_data *dev=*_dev;
+	dev->head.major=new->head.major;
+	dev->head.minor=new->head.minor;
+	dev->head.headerSize=new->head.headerSize;
+	/* headerCRC32 is taken care of by writegpt() */
+	dev->head.reserved=new->head.reserved;
+	dev->head.myLBA=new->head.myLBA;
+	dev->head.altLBA=new->head.altLBA;
+	dev->head.dataStartLBA=new->head.dataStartLBA;
+	dev->head.dataEndLBA=new->head.dataEndLBA;
+	uuid_copy(dev->head.diskUuid, new->head.diskUuid);
+	dev->head.entryStart=new->head.entryStart;
+
+	/* have to worry if the older one had less space for entries */
+	if(dev->head.entryCount<new->head.entryCount) {
+		dev=realloc(dev, sizeof(struct gpt_data)+sizeof(struct gpt_entry)*new->head.entryCount);
+		if(!dev) {
+			fprintf(stderr, "Failed allocating memory, sorry\n");
+			return false;
+		}
+		*_dev=dev;
+	}
+	dev->head.entryCount=new->head.entryCount;
+	dev->head.entrySize=new->head.entrySize;
+	/* entryCRC32 is taken care of by writegpt() */
+/* TODO: check whether extents and type match */
+	for(i=0; i<new->head.entryCount; ++i) dev->entry[i]=new->entry[i];
+
+	return true;
 }
 

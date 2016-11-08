@@ -35,8 +35,6 @@
 #include "gpt.h"
 
 
-#define DISABLE_WRITES 1
-
 /* The magic number for the GPT */
 const union _gpt_magic gpt_magic={.ch={'E','F','I',' ','P','A','R','T'}};
 
