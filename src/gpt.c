@@ -301,7 +301,7 @@ bool writegpt(int fd, const struct gpt_data *gpt)
 
 	lseek(fd, new->head.entryStart*blocksz, SEEK_SET);
 #ifndef DISABLE_WRITES
-	write(fd, &new->head.entry, new->head.entryCount*new->head.entrySize);
+	write(fd, new->entry, new->head.entryCount*new->head.entrySize);
 #endif
 
 	lseek(fd, new->head.myLBA*blocksz, SEEK_SET);
@@ -314,7 +314,7 @@ bool writegpt(int fd, const struct gpt_data *gpt)
 	new->head.headerCRC32=htole32(crc);
 
 #ifndef DISABLE_WRITES
-	write(fd, &new->head, SEEK_SET);
+	write(fd, &new->head, sizeof(new->head));
 #endif
 
 
@@ -324,13 +324,13 @@ bool writegpt(int fd, const struct gpt_data *gpt)
 	new->head.altLBA=new->head.myLBA;
 	new->head.myLBA=1;
 
-	new->head.entryStart-=new->head.dataEndLBA-new->head.altLBA;
+	new->head.entryStart-=new->head.dataEndLBA-new->head.myLBA;
 
 	/* entry CRC remains the same */
 
 	lseek(fd, new->head.entryStart*blocksz, SEEK_SET);
 #ifndef DISABLE_WRITES
-	write(fd, &new->entry, new->head.entryCount*new->head.entrySize);
+	write(fd, new->entry, new->head.entryCount*new->head.entrySize);
 #endif
 
 	lseek(fd, blocksz, SEEK_SET);
@@ -344,7 +344,7 @@ bool writegpt(int fd, const struct gpt_data *gpt)
 	new->head.headerCRC32=htole32(crc);
 
 #ifndef DISABLE_WRITES
-	write(fd, &new->head, SEEK_SET);
+	write(fd, &new->head, sizeof(new->head));
 #endif
 
 
