@@ -25,7 +25,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <search.h>
 #include <termios.h>
 
 #include "gpt.h"
@@ -262,36 +261,24 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 	}
 	memset(visited, 0, (new->head.entryCount+7)>>3);
 
-	if(!hcreate(new->head.entryCount+(new->head.entryCount>>1))) {
-		fprintf(stderr, "Failed trying to create hash table\n");
-		goto fail;
-	}
-
-	for(i=0; i<new->head.entryCount; ++i) {
-		ENTRY e;
-		if(uuid_is_null(new->entry[i].type)||uuid_is_null(new->entry[i].id)) continue;
-
-		e.key=new->entry[i].name;
-		e.data=new->entry+i;
-		if(!hsearch(e, ENTER)) {
-			fprintf(stderr, "Failed adding entry to hash table\n");
-			goto fail;
-		}
-	}
-
 	for(i=0; i<dev->head.entryCount; ++i) {
-		ENTRY *e, es;
-		struct gpt_entry *g;
+		int j;
+		const struct gpt_entry *g;
 		char buf[128];
+
 		if(uuid_is_null(dev->entry[i].type)||uuid_is_null(dev->entry[i].id)) continue;
 
-		es.key=dev->entry[i].name;
-		if(!(e=hsearch(es, FIND))) {
-			fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
-			goto fail;
-		}
+		j=i;
+		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
+			++j;
+			if(j>dev->head.entryCount) j=0;
 
-		g=e->data;
+			if(j==i) {
+				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
+				goto fail;
+			}
+		}
+		g=new->entry+j;
 
 		visited[(g-new->entry)>>3]|=1<<((g-new->entry)&7);
 
@@ -312,7 +299,7 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 		dev->entry[i].startLBA=g->startLBA;
 		dev->entry[i].endLBA=g->endLBA;
 
-		/* these 3 are known to move and reasonably safe to adjust */
+		/* these 2 are known to move somewhat and reasonably safe to adjust */
 		if(g->name[0]=='c') {
 			if(!strcmp(g->name, "cache")) continue;
 		} else if(!strcmp(g->name, "userdata")) continue;
@@ -336,6 +323,8 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 		/* original already has such entry */
 		if(visited[(unsigned)i>>3]&1<<(i&7)) continue;
 
+		if(uuid_is_null(new->entry[i].type)) continue;
+
 		while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id)) ++empty;
 
 		dev->entry[empty]=new->entry[i];
@@ -345,14 +334,11 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 TODO: convert to raw format, compute CRC to match unadjusted image
 */
 
-	hdestroy();
-
 	free(visited);
 
 	return true;
 
 fail:
-	hdestroy();
 	if(visited) free(visited);
 	return false;
 }
