@@ -17,31 +17,34 @@
 #########################################################################
 
 
+TARGETS := gpt mergegpt
+
 CC = gcc
 CFLAGS = -Wall -g -c
 
 LD = $(CC)
 
-SRCS = gpt.c mergegpt.c
+mergegpt_SRCS := gpt.c mergegpt.c
+
+gpt_SRCS := gpt.c display_gpt.c
 
 LIBS = z uuid
 
-OBJS = $(SRCS:.c=.o)
+$(foreach targ,$(TARGETS),$(eval $(targ)_OBJS := $$($(targ)_SRCS:.c=.o)))
 
 #ANDROID_NDK ?= <some directory>
 
 -include local.mk
 
-all: gpt mergegpt
+all: $(TARGETS)
 
 # $(ANDROID_NDK)/ndk-build
 
-mergegpt: $(OBJS:%=obj/%)
-	$(LD) $(LIBS:%=-l%) $^ -o bin/$@
+$(foreach targ,$(TARGETS),$(eval $(targ): $$($(targ)_OBJS:%=obj/%)))
 
-gpt: src/gpt.c src/gpt.h
-	mkdir -p bin
-	gcc -Wall -g -DGPT_MAIN src/gpt.c $(LIBS:%=-l%) -o bin/gpt
+$(TARGETS): %:
+	@mkdir -p bin
+	$(LD) $(LIBS:%=-l%) $^ -o bin/$@
 
 obj/%.o: src/%.c
 	$(CC) $(CFLAGS) $< -o $@

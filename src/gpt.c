@@ -69,6 +69,7 @@ static void gpt_entry_native2raw(struct _gpt_entry *__restrict, const struct gpt
 
 
 #ifdef GPT_MAIN
+/******************* moved to display_gpt.c *******************/
 int main(int argc, char **argv)
 {
 	struct gpt_data *data, *alt;
