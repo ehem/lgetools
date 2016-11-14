@@ -4,6 +4,8 @@
 /libs/
 # Conventional location for intermediate build files
 /obj/
+# Used for overriding portions of the Makefile
+local.mk
 # Python 3 cache files
 __pycache__/
 # Python 2 cache files

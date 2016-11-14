@@ -19,16 +19,18 @@
 
 TARGETS := gpt mergegpt
 
-CC = gcc
-CFLAGS = -Wall -g -c
+CC ?= gcc
+CFLAGS := -Wall -g -c
 
-LD = $(CC)
+LD := $(CC)
 
 mergegpt_SRCS := gpt.c mergegpt.c
 
 gpt_SRCS := gpt.c display_gpt.c
 
-LIBS = z uuid
+LIBS := z uuid
+
+DIRS := bin obj
 
 $(foreach targ,$(TARGETS),$(eval $(targ)_OBJS := $$($(targ)_SRCS:.c=.o)))
 
@@ -36,16 +38,19 @@ $(foreach targ,$(TARGETS),$(eval $(targ)_OBJS := $$($(targ)_SRCS:.c=.o)))
 
 -include local.mk
 
-all: $(TARGETS)
+all: $(TARGETS:%=bin/%)
 
 # $(ANDROID_NDK)/ndk-build
 
-$(foreach targ,$(TARGETS),$(eval $(targ): $$($(targ)_OBJS:%=obj/%)))
+$(foreach targ,$(TARGETS),$(eval bin/$(targ): $$($(targ)_OBJS:%=obj/%)))
 
-$(TARGETS): %:
-	@mkdir -p bin
-	$(LD) $(LIBS:%=-l%) $^ -o bin/$@
+$(TARGETS:%=bin/%): %:
+	$(LD) $(LIBS:%=-l%) $^ -o $@
 
-obj/%.o: src/%.c
+obj/%.o: src/%.c $(DIRS:%=%/.timestamp)
 	$(CC) $(CFLAGS) $< -o $@
+
+$(DIRS:%=%/.timestamp):
+	mkdir -p $(dir $@)
+	touch $@
 
