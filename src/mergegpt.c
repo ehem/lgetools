@@ -37,6 +37,8 @@ static bool mergegpt(int, struct gpt_data **, const struct gpt_data *);
 static bool hybridgpt(int, struct gpt_data **, const struct gpt_data *);
 static bool replacegpt(int, struct gpt_data **, const struct gpt_data *);
 
+static bool checkmove(const struct gpt_entry *, const struct gpt_entry *);
+
 
 int main(int argc, char **argv)
 {
@@ -292,30 +294,12 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 			goto fail;
 		}
 
-		if((g->startLBA==dev->entry[i].startLBA)&&(g->endLBA==dev->entry[i].endLBA)) continue;
+		/* are they sure?  (or is it a known okay?) */
+		if(!checkmove(g, dev->entry+i)) return false;
 
 		/* problematic situation, start and/or end differ, be wary */
-
 		dev->entry[i].startLBA=g->startLBA;
 		dev->entry[i].endLBA=g->endLBA;
-
-		/* these 2 are known to move somewhat and reasonably safe to adjust */
-		if(g->name[0]=='c') {
-			if(!strcmp(g->name, "cache")) continue;
-		} else if(!strcmp(g->name, "userdata")) continue;
-
-		if(!strcmp(g->name+strlen(g->name)-3, "bak")) {
-			fprintf(stderr, "ERROR: Need to move slice \"%s\", which is likely part of bootloader, fail\n", g->name);
-			goto fail;
-		}
-
-		fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n", g->name);
-
-		fgets(buf, sizeof(buf), stdin);
-		if(!strcasecmp(buf, "yes\n")) {
-			printf("Not confirmed, terminating\n");
-			return false;
-		}
 	}
 
 	/* copy in any extra slices needed by replacement image */
@@ -380,11 +364,60 @@ static bool replacegpt(int fd, struct gpt_data **_dev, const struct gpt_data *ne
 		}
 		*_dev=dev;
 	}
+
+	for(i=0; i<dev->head.entryCount; ++i) {
+		int j;
+		if(uuid_is_null(dev->entry[i].type)) continue;
+
+		j=i;
+		while(uuid_compare(dev->entry[i].type, new->entry[j].type)||
+strcmp(dev->entry[i].name, new->entry[j].name)) {
+			++j;
+			if(j>dev->head.entryCount) j=0;
+
+			if(j==i) {
+				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
+				return false;
+                        }
+                }
+
+		if(!checkmove(dev->entry+i, new->entry+j)) return false;
+	}
+
 	dev->head.entryCount=new->head.entryCount;
 	dev->head.entrySize=new->head.entrySize;
 	/* entryCRC32 is taken care of by writegpt() */
-/* TODO: check whether extents and type match */
+
 	for(i=0; i<new->head.entryCount; ++i) dev->entry[i]=new->entry[i];
+
+	return true;
+}
+
+
+static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
+{
+	char buf[128];
+
+	if((ent->startLBA==oth->startLBA)&&(ent->endLBA==oth->endLBA)) return true;
+
+	/* these 3 are known to move somewhat and reasonably safe to adjust */
+	if(ent->name[0]=='c') {
+		if(!strcmp(ent->name, "cache")) return true;
+		else if(!strcmp(ent->name, "cust")) return true;
+	} else if(!strcmp(ent->name, "userdata")) return true;
+
+	if(!strcmp(ent->name+strlen(ent->name)-3, "bak")) {
+		fprintf(stderr, "ERROR: Need to move slice \"%s\", which is likely part of bootloader, fail\n", ent->name);
+		return false;
+	}
+
+	fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n", ent->name);
+
+	fgets(buf, sizeof(buf), stdin);
+	if(!strcasecmp(buf, "yes\n")) {
+		printf("Not confirmed, terminating\n");
+		return false;
+	}
 
 	return true;
 }
