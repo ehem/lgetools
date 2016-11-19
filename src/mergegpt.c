@@ -275,14 +275,13 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 	for(i=0; i<origentries; ++i) {
 		int j;
 		const struct gpt_entry *g;
-		char buf[128];
 
 		if(uuid_is_null(dev->entry[i].type)||uuid_is_null(dev->entry[i].id)) continue;
 
 		j=i;
 		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
 			++j;
-			if(j>dev->head.entryCount) j=0;
+			if(j>new->head.entryCount) j=0;
 
 			if(j==i) {
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
@@ -318,7 +317,11 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 
 		if(uuid_is_null(new->entry[i].type)) continue;
 
-		while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id)) ++empty;
+		while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id))
+			if(++empty==dev->head.entryCount) {
+				fprintf(stderr, "Ran out of spare entries in GPT, unable to continue\n");
+				return false;
+			}
 
 		dev->entry[empty]=new->entry[i];
 	}
@@ -352,17 +355,22 @@ static bool replacegpt(int fd, struct gpt_data **_dev, const struct gpt_data *ne
 {
 	int i;
 	struct gpt_data *dev=*_dev;
+
 	dev->head.major=new->head.major;
 	dev->head.minor=new->head.minor;
 	dev->head.headerSize=new->head.headerSize;
 	/* headerCRC32 is taken care of by writegpt() */
 	dev->head.reserved=new->head.reserved;
+
+	/* we copy these fields since we could be reinstalling a F600S GPT,
+	** which has a slightly different amount of space */
 	dev->head.myLBA=new->head.myLBA;
 	dev->head.altLBA=new->head.altLBA;
 	dev->head.dataStartLBA=new->head.dataStartLBA;
 	dev->head.dataEndLBA=new->head.dataEndLBA;
 	uuid_copy(dev->head.diskUuid, new->head.diskUuid);
 	dev->head.entryStart=new->head.entryStart;
+
 
 	/* have to worry if the older one had less space for entries */
 	if(dev->head.entryCount<new->head.entryCount) {
