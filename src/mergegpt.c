@@ -237,6 +237,7 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 	int empty=0;
 	struct gpt_data *dev=*_dev;
 	char *visited=NULL;
+	uint32_t origentries, needentries;
 
 	/* we copy these fields since we could be reinstalling a F600S GPT,
 	** which has a slightly different amount of space */
@@ -246,15 +247,23 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 	dev->head.dataEndLBA=new->head.dataEndLBA;
 	dev->head.entryStart=new->head.entryStart;
 
+	origentries=dev->head.entryCount;
+
 
 	/* have to worry if the older one had less space for entries */
-	if(dev->head.entryCount<new->head.entryCount) {
-		dev=realloc(dev, sizeof(struct gpt_data)+sizeof(struct gpt_entry)*new->head.entryCount);
+	needentries=0;
+	for(i=0; i<new->head.entryCount; ++i) if(!uuid_is_null(new->entry[i].type)&&!uuid_is_null(new->entry[i].id)) ++needentries;
+	if(origentries<needentries) {
+		dev=realloc(dev, sizeof(struct gpt_data)+sizeof(struct gpt_entry)*needentries);
 		if(!dev) {
 			fprintf(stderr, "Failed allocating memory, sorry\n");
 			return false;
 		}
 		*_dev=dev;
+
+		memset(dev->entry+origentries, 0,
+sizeof(struct gpt_entry)*(needentries-origentries));
+		dev->head.entryCount=needentries;
 	}
 
 	if(!(visited=malloc((new->head.entryCount+7)>>3))) {
@@ -263,7 +272,7 @@ static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 	}
 	memset(visited, 0, (new->head.entryCount+7)>>3);
 
-	for(i=0; i<dev->head.entryCount; ++i) {
+	for(i=0; i<origentries; ++i) {
 		int j;
 		const struct gpt_entry *g;
 		char buf[128];
