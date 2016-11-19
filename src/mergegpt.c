@@ -343,11 +343,115 @@ fail:
 static bool hybridgpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
 {
 	int i;
+	int empty=0;
 	struct gpt_data *dev=*_dev;
+	uint32_t origentries, needentries;
 
-/* use ordering from incoming */
-	return false;
-//	return true;
+	/* we copy these fields since we could be reinstalling a F600S GPT,
+	** which has a slightly different amount of space */
+	dev->head.myLBA=new->head.myLBA;
+	dev->head.altLBA=new->head.altLBA;
+	dev->head.dataStartLBA=new->head.dataStartLBA;
+	dev->head.dataEndLBA=new->head.dataEndLBA;
+	dev->head.entryStart=new->head.entryStart;
+
+	origentries=dev->head.entryCount;
+
+
+	/* have to worry if the older one had less space for entries */
+	needentries=0;
+	for(i=0; i<new->head.entryCount; ++i) if(!uuid_is_null(new->entry[i].type)&&!uuid_is_null(new->entry[i].id)) ++needentries;
+	if(origentries<needentries) {
+		dev=realloc(dev, sizeof(struct gpt_data)+sizeof(struct gpt_entry)*needentries);
+		if(!dev) {
+			fprintf(stderr, "Failed allocating memory, sorry\n");
+			return false;
+		}
+		*_dev=dev;
+
+		memset(dev->entry+origentries, 0,
+sizeof(struct gpt_entry)*(needentries-origentries));
+		dev->head.entryCount=needentries;
+	}
+
+
+	for(i=new->head.entryCount; i>=0; --i) {
+		int j;
+
+		if(uuid_is_null(new->entry[i].type)||uuid_is_null(new->entry[i].id)) continue;
+
+		j=i;
+		while(strcmp(new->entry[i].name, dev->entry[j].name)) {
+			--j;
+			if(j<0) j=origentries;
+
+			if(j==i) { /* absent from original GPT */
+
+				if(!uuid_is_null(dev->entry[i].type)&&!uuid_is_null(dev->entry[i].id)) {
+					while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id))
+						if(++empty==dev->head.entryCount) {
+							fprintf(stderr, "Ran out of spare entries in GPT, unable to continue\n");
+							return false;
+						}
+					dev->entry[empty]=dev->entry[i];
+				}
+
+				dev->entry[i]=new->entry[i];
+				break;
+			}
+		}
+
+		if(j!=i) {
+			struct gpt_entry tmp=dev->entry[j];
+			dev->entry[i]=dev->entry[j];
+			dev->entry[j]=tmp;
+		}
+
+		if(uuid_compare(new->entry[i].type, dev->entry[i].type)) {
+			fprintf(stderr, "ERROR: Type UUID differs for slice named \"%s\", cannot continue\n", dev->entry[i].name);
+			return false;
+                }
+
+		if(new->entry[i].flags!=dev->entry[i].flags) {
+			fprintf(stderr, "ERROR: Flags differ for slice named \"%s\", cannot continue\n", dev->entry[i].name);
+			return false;
+                }
+
+		/* are they sure?  (or is it a known okay?) */
+		if(!checkmove(new->entry+i, dev->entry+i)) return false;
+
+		/* problematic situation, start and/or end differ, be wary */
+		dev->entry[i].startLBA=new->entry[i].startLBA;
+		dev->entry[i].endLBA=new->entry[i].endLBA;
+	}
+
+
+	/* check for slices which would be removed (likely BAD) */
+	for(i=0; i<dev->head.entryCount; ++i) {
+		int j;
+
+		/* dev is potentially scrambled at this point, so scan whole */
+
+		if(uuid_is_null(dev->entry[i].type)||uuid_is_null(dev->entry[i].id)) continue;
+
+		j=i;
+		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
+			++j;
+			if(j>new->head.entryCount) j=0;
+
+			if(j==i) {
+				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
+				return false;
+                        }
+		}
+	}
+
+
+/*
+TODO: convert to raw format, compute CRC to match unadjusted image
+*/
+
+	return true;
 }
 
 
