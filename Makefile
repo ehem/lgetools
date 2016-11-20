@@ -20,9 +20,9 @@
 TARGETS := gpt mergegpt
 
 CC ?= gcc
-CFLAGS := -Wall -g -c
+CFLAGS := -Wall -g -MMD -c
 
-LD := $(CC)
+LD ?= $(CC)
 
 mergegpt_SRCS := gpt.c mergegpt.c
 
@@ -53,4 +53,6 @@ obj/%.o: src/%.c $(DIRS:%=%/.timestamp)
 $(DIRS:%=%/.timestamp):
 	mkdir -p $(dir $@)
 	touch $@
+
+-include obj/*.d
 
