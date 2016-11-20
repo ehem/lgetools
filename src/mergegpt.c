@@ -72,8 +72,6 @@ int main(int argc, char **argv)
 				exit(128);
 			}
 			action=HYBRID;
-			fprintf(stderr, "\nCurrently hybrid mode is unimplemented and not yet functional, sorry\n");
-			exit(1);
 			break;
 		case 't':
 			testonly=true;
@@ -224,8 +222,15 @@ int main(int argc, char **argv)
 	}
 	putchar('\n');
 
-	if(dev>=0) writegpt(dev, devnew);
-	else printf("...simulate writing to media...\n");
+	if(dev<0) {
+		printf("...simulate writing to media...\n");
+		exit(0);
+	}
+
+	if(!writegpt(dev, devnew)) {
+		fprintf(stderr, "PANIC!!! Failed while writing new GPT\n");
+		exit(1);
+	}
 
 	return 0;
 }
@@ -484,6 +489,9 @@ static bool replacegpt(int fd, struct gpt_data **_dev, const struct gpt_data *ne
 			return false;
 		}
 		*_dev=dev;
+
+		memset(dev->entry+dev->head.entryCount, 0,
+sizeof(struct gpt_entry)*(new->head.entryCount-dev->head.entryCount));
 	}
 
 	for(i=0; i<dev->head.entryCount; ++i) {
