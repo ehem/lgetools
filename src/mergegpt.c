@@ -83,14 +83,21 @@ int main(int argc, char **argv)
 			verbose=-1;
 			break;
 		default:
+		case 'h':
 			fprintf(stderr,
-"Usage: %s [-m | -r] [-t] <device> <replacement-GPT.bin>\n" "\n"
+"Usage: %s [-m | -M | -r] [-t] <device> <replacement-GPT.bin> [<backup-GPT.bin>]\n"
+"\n"
 "optional arguments:\n"
-"  -h, --help            show this help message and exit\n"
+"  -h                    show this help message and exit\n"
+"  -t                    test mode, do not write to media\n"
 "  -m                    merge GPT copies in\n"
 "  -M                    intermediate merge, incoming has more effect\n"
 "  -r                    replace GPT on device with GPT images from .bin files"
-"\n", argv[0]);
+"\n" "\n"
+"Merge mode (-m) is the most conservative and should be safest.\n"
+"Intermediate merge mode (-M) is slightly less conservative, but should\n"
+"still be pretty safe.  Replacement mode (-r) is most risky and may or may\n"
+"not work depending upon how sensitive the firmware is.\n", argv[0]);
 			exit(opt=='h'?0:128);
 		}
 	}
