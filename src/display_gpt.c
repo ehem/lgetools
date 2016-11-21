@@ -72,10 +72,12 @@ data->head.myLBA==1?"primary":"backup", argv[1], data->blocksz);
 		} else {
 			uuid_unparse(data->entry[i].type, buf0);
 			uuid_unparse(data->entry[i].id, buf1);
-			printf("Name: \"%s\" start=%llu end=%llu\n"
+			printf("Name: \"%s\" start=%llu end=%llu count=%llu\n"
 "typ=%s id=%s\n", data->entry[i].name,
 (unsigned long long)data->entry[i].startLBA,
-(unsigned long long)data->entry[i].endLBA, buf0, buf1);
+(unsigned long long)data->entry[i].endLBA,
+(unsigned long long)(data->entry[i].endLBA-data->entry[i].startLBA), buf0,
+buf1);
 		}
 	}
 
