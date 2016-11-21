@@ -38,6 +38,7 @@ static bool hybridgpt(int, struct gpt_data **, const struct gpt_data *);
 static bool replacegpt(int, struct gpt_data **, const struct gpt_data *);
 
 static bool checkmove(const struct gpt_entry *, const struct gpt_entry *);
+static bool checkremove(const struct gpt_entry *ent);
 
 
 int main(int argc, char **argv)
@@ -166,7 +167,7 @@ int main(int argc, char **argv)
 			char buf[512];
 			printf(fmt, "Danger!  GPT to install does not match either device GPT!\n\nAre you SURE you wish to continue? (must type \"yes\")\n");
 			fgets(buf, sizeof(buf), stdin);
-			if(!strcasecmp(buf, "yes\n")) {
+			if(strcasecmp(buf, "yes\n")) {
 				printf("Not confirmed, terminating\n");
 				exit(64);
 			}
@@ -296,6 +297,7 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 			if(j>new->head.entryCount) j=0;
 
 			if(j==i) {
+				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
 				goto fail;
 			}
@@ -452,6 +454,7 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 			if(j>new->head.entryCount) j=0;
 
 			if(j==i) {
+				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
 				return false;
                         }
@@ -512,6 +515,7 @@ strcmp(dev->entry[i].name, new->entry[j].name)) {
 			if(j>dev->head.entryCount) j=0;
 
 			if(j==i) {
+				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
 				return false;
                         }
@@ -550,7 +554,40 @@ static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
 	fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n", ent->name);
 
 	fgets(buf, sizeof(buf), stdin);
-	if(!strcasecmp(buf, "yes\n")) {
+	if(strcasecmp(buf, "yes\n")) {
+		printf("Not confirmed, terminating\n");
+		return false;
+	}
+
+	return true;
+}
+
+static bool checkremove(const struct gpt_entry *ent)
+{
+	const char *const okay[]={"cust", "eri", "operatorlogging"};
+	unsigned int lo, hi, mid;
+	char buf[128];
+
+	if(!strcmp(ent->name+strlen(ent->name)-3, "bak")) {
+		fprintf(stderr, "ERROR: Need to remove slice \"%s\", which is likely part of bootloader, fail\n", ent->name);
+		return false;
+	}
+
+	lo=0; hi=sizeof(okay)/sizeof(okay[0]);
+	do {
+		int cmp;
+		mid=((lo+hi)>>1);
+		if(!(cmp=strcmp(ent->name, okay[mid]))) {
+			fprintf(stderr, "WARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n", ent->name);
+			return true;
+		} else if(cmp<0) hi=mid;
+		else lo=mid+1;
+	} while(lo!=hi);
+
+	fprintf(stderr, "DANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n", ent->name);
+
+	fgets(buf, sizeof(buf), stdin);
+	if(strcasecmp(buf, "yes\n")) {
 		printf("Not confirmed, terminating\n");
 		return false;
 	}
