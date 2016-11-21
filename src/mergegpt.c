@@ -438,8 +438,8 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 
 		if(j!=i) {
 			struct gpt_entry tmp=dev->entry[j];
-			dev->entry[i]=dev->entry[j];
-			dev->entry[j]=tmp;
+			dev->entry[j]=dev->entry[i];
+			dev->entry[i]=tmp;
 		}
 
 		if(uuid_compare(new->entry[i].type, dev->entry[i].type)) {
