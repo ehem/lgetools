@@ -567,7 +567,7 @@ static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
 		return false;
 	}
 
-	fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n", ent->name);
+	fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
 
 	fgets(buf, sizeof(buf), stdin);
 	if(strcasecmp(buf, "yes\n")) {
@@ -594,13 +594,13 @@ static bool checkremove(const struct gpt_entry *ent)
 		int cmp;
 		mid=((lo+hi)>>1);
 		if(!(cmp=strcmp(ent->name, okay[mid]))) {
-			fprintf(stderr, "WARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n", ent->name);
+			fprintf(stderr, "WARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n\n", ent->name);
 			return true;
 		} else if(cmp<0) hi=mid;
 		else lo=mid+1;
 	} while(lo!=hi);
 
-	fprintf(stderr, "DANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n", ent->name);
+	fprintf(stderr, "DANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
 
 	fgets(buf, sizeof(buf), stdin);
 	if(strcasecmp(buf, "yes\n")) {
