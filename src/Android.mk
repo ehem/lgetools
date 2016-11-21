@@ -4,7 +4,7 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := mergegpt
 
-LOCAL_SRC_FILES := mergegpt.c gpt.c
+LOCAL_SRC_FILES := mergegpt.c gpt.c forcecrc32.c
 
 LOCAL_STATIC_LIBRARIES := android_support
 

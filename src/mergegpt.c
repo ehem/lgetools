@@ -26,8 +26,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <termios.h>
+#include <zlib.h>
 
 #include "gpt.h"
+#include "forcecrc32.h"
 
 
 int verbose=0;
@@ -48,8 +50,11 @@ int main(int argc, char **argv)
 	int opt;
 	struct gpt_data *devpri=NULL, *devsec=NULL, *newpri=NULL, *newsec=NULL;
 	struct gpt_data *devnew;
+	struct _gpt_data *new;
 	int dev, new0, new1=-1;
 	bool (*mergefunc)(int, struct gpt_data **, const struct gpt_data *);
+	uint32_t crc;
+	int i;
 
 	while((opt=getopt(argc, argv, "hrmMtvq"))!=-1) {
 		switch(opt) {
@@ -208,10 +213,30 @@ int main(int argc, char **argv)
 
 	if(!mergefunc(dev, &devnew, newpri)) exit(2);
 
+
+	new=(struct _gpt_data *)devnew;
+	gpt_entries2raw(new, devnew);
+
+	crc=crc32(0, (Byte *)new->entry, new->head.entrySize*new->head.entryCount);
+	crc^=new->head.entryCRC32;
+	for(i=new->head.entryCount-1; i>=0; --i) {
+		if(!memcmp("\0\0\0\0\0\0", (char *)new->entry[i].name+sizeof(new->entry[i].name)-6, 6)) {
+			crc=reverse_crc32(crc,
+(char *)(new->entry+new->head.entryCount)-((char *)new->entry[i].name+sizeof(new->entry[i].name)-4));
+			memcpy((char *)new->entry[i].name+sizeof(new->entry[i].name)-4, &crc, 4);
+			break;
+		}
+	}
+
+	crc=crc32(0, (Byte *)new->entry, new->head.entrySize*new->head.entryCount);
+	if(crc!=new->head.entryCRC32) fprintf(stderr, "Failed to preserve entry CRC32, the GPT modification may be easier to spot!!\n\n");
+
+	new->head.entryCRC32=crc;
+
 	printf("A merged GPT has been successfully created.  This process has "
 "a substantial\n" "chance of producing incorrect results, even though care has "
 "been taken to make\n" "the process work.\n"
-"Are you sure you wish to write the new GPT to the target? (y/n)\n");
+"Are you sure you wish to write the new GPT to the target? (y/N)\n");
 
 	setvbuf(stdin, NULL, _IONBF, 0);
 	{
@@ -235,7 +260,7 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 
-	if(!writegpt(dev, devnew)) {
+	if(!_writegpt(dev, new)) {
 		fprintf(stderr, "PANIC!!! Failed while writing new GPT\n");
 		exit(1);
 	}
@@ -339,10 +364,6 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 
 		dev->entry[empty]=new->entry[i];
 	}
-
-/*
-TODO: convert to raw format, compute CRC to match unadjusted image
-*/
 
 	free(visited);
 
@@ -461,11 +482,6 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 		}
 	}
 
-
-/*
-TODO: convert to raw format, compute CRC to match unadjusted image
-*/
-
 	return true;
 }
 
@@ -526,7 +542,7 @@ strcmp(dev->entry[i].name, new->entry[j].name)) {
 
 	dev->head.entryCount=new->head.entryCount;
 	dev->head.entrySize=new->head.entrySize;
-	/* entryCRC32 is taken care of by writegpt() */
+	dev->head.entryCRC32=new->head.entryCRC32;
 
 	for(i=0; i<new->head.entryCount; ++i) dev->entry[i]=new->entry[i];
 

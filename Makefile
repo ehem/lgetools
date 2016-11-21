@@ -24,7 +24,7 @@ CFLAGS := -Wall -g -MMD -c
 
 LD ?= $(CC)
 
-mergegpt_SRCS := gpt.c mergegpt.c
+mergegpt_SRCS := gpt.c mergegpt.c forcecrc32.c
 
 gpt_SRCS := gpt.c display_gpt.c
 
