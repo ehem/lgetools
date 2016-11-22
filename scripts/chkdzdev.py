@@ -37,7 +37,7 @@ verbose = 0
 def parseArgs():
 	# Parse and return arguments
 	parser = argparse.ArgumentParser(description="LG KDZ device value changer $Id$")
-	group = parser.add_mutually_exclusive_group(required=True)
+	group = parser.add_mutually_exclusive_group()
 	group.add_argument("-s", "--set-device", help='Device name to set (often "H###")', action="store", dest="device")
 	group.add_argument("-c", "--copyfrom", help="KDZ file to copy device name from", action="store", dest="deviceFile")
 	group = parser.add_mutually_exclusive_group()
@@ -103,12 +103,14 @@ def getDevice(name):
 
 	device = entry[4].rstrip(b'\x00')
 
-	if not device.startswith(b"LG-"):
-		print("Error: Device name inside inner DZ file doesn't begin with \"LG-\", failed.", file=sys.stderr)
+	if device.startswith(b"LG-"):
+		# Last bit of decoding needed
+		device = device[3:].decode("utf8")
+	elif len(device) == 5 and device[0].isupper():
+		device = device.decode("utf8")
+	else:
+		print("Error: Device name inside inner DZ file doesn't match known patters, failed.", file=sys.stderr)
 		sys.exit(1)
-
-	# Last bit of decoding needed
-	device = device[3:].decode("utf8")
 
 	if verbose >= 1:
 		print('File "{:s}": found device name "{:s}"'.format(name, device))
@@ -179,11 +181,11 @@ def setDevice(name, device, setFactory):
 
 	old_device = dz_entry[4].rstrip(b'\x00')
 
-	if not old_device.startswith(b"LG-"):
-		print("Error: Device name inside \"{:s}\" inner DZ file doesn't begin with \"LG-\", failed.".format(name), file=sys.stderr)
+	if old_device.startswith(b"LG-"):
+		old_device = old_device[3:]
+	elif len(old_device) != 5 or not old_device[0].isupper():
+		print("Error: Device name inside \"{:s}\" inner DZ file doesn't match known patterns, failed.".format(name), file=sys.stderr)
 		return 1
-
-	old_device = old_device[3:]
 
 	nename = device + ename[len(old_device):]
 	if verbose >= 1:
@@ -197,10 +199,19 @@ def setDevice(name, device, setFactory):
 
 	entry = [x for x in dz_entry]
 
-	entry[4] = ("LG-" + device).ljust(32, b'\x00')
+	# The pattern appears to be "H" devices include "LG-", others do not
+	entry[4] = "LG-" + device if device[0] == "H" else device
+
+	entry[4] = entry[4].ljust(32, b'\x00')
 
 	old_factory = entry[5].rstrip(b'\x00')
-	new_factory = "LG" + device + old_factory[len(old_device)+2:]
+	if old_device[0] == "H":
+		new_factory = device + old_factory[len(old_device)+2:]
+	else:
+		new_factory = device + old_factory[len(old_device):]
+
+	if device[0] == "H":
+		new_factory = "LG" + new_factory
 
 	if setFactory:
 		print('File "{:s}": old factory version="{:s}", new factory version="{:s}"'.format(name, old_factory.decode("utf8"), new_factory.decode("utf8")))
@@ -216,15 +227,17 @@ def setDevice(name, device, setFactory):
 if __name__ == "__main__":
 	args = parseArgs()
 
-	if args.deviceFile:
-		pass
+	verbose = args.verbose
 
 	if args.deviceFile:
 		args.device=getDevice(args.deviceFile)
 
-	print('Device name to use: "{:s}"'.format(args.device))
+	if not args.device:
+		for f in args.files:
+			print('Device for "{:s}" is: "{:s}"'.format(f, getDevice(f)))
+		sys.exit(0)
 
-	verbose = args.verbose
+	print('Device name to use: "{:s}"'.format(args.device))
 
 	err = 0
 
