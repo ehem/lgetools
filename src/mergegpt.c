@@ -261,7 +261,7 @@ int main(int argc, char **argv)
 	}
 
 	if(!_writegpt(dev, new)) {
-		fprintf(stderr, "PANIC!!! Failed while writing new GPT\n");
+		fprintf(stderr, "\aPANIC!!! Failed while writing new GPT\a\n\a");
 		exit(1);
 	}
 
@@ -567,7 +567,7 @@ static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
 		return false;
 	}
 
-	fprintf(stderr, "DANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
+	fprintf(stderr, "\aDANGER: Need to move slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
 
 	fgets(buf, sizeof(buf), stdin);
 	if(strcasecmp(buf, "yes\n")) {
@@ -594,13 +594,13 @@ static bool checkremove(const struct gpt_entry *ent)
 		int cmp;
 		mid=((lo+hi)>>1);
 		if(!(cmp=strcmp(ent->name, okay[mid]))) {
-			fprintf(stderr, "WARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n\n", ent->name);
+			fprintf(stderr, "\aWARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n\n", ent->name);
 			return true;
 		} else if(cmp<0) hi=mid;
 		else lo=mid+1;
 	} while(lo!=hi);
 
-	fprintf(stderr, "DANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
+	fprintf(stderr, "\aDANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
 
 	fgets(buf, sizeof(buf), stdin);
 	if(strcasecmp(buf, "yes\n")) {
