@@ -17,7 +17,7 @@
 #########################################################################
 
 
-TARGETS := gpt mergegpt
+TARGETS := gpt mergegpt truncate
 
 CC ?= gcc
 CFLAGS := -Wall -g -MMD -c
@@ -27,6 +27,8 @@ LD ?= $(CC)
 mergegpt_SRCS := gpt.c mergegpt.c forcecrc32.c
 
 gpt_SRCS := gpt.c display_gpt.c
+
+truncate_SRCS := truncate.c
 
 LIBS := z uuid
 

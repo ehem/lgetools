@@ -36,5 +36,23 @@ include $(BUILD_EXECUTABLE)
 
 
 
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := truncate
+
+LOCAL_SRC_FILES := truncate.c
+
+LOCAL_STATIC_LIBRARIES :=
+
+GPTLIBS :=
+
+LOCAL_LDLIBS := $(GPTLIBS:%=-l%)
+
+LOCAL_CFLAGS := -Wall -std=c11
+
+include $(BUILD_EXECUTABLE)
+
+
+
 $(call import-module,android/support)
 
