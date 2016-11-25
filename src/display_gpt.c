@@ -76,7 +76,7 @@ data->head.myLBA==1?"primary":"backup", argv[1], data->blocksz);
 "typ=%s id=%s\n", data->entry[i].name,
 (unsigned long long)data->entry[i].startLBA,
 (unsigned long long)data->entry[i].endLBA,
-(unsigned long long)(data->entry[i].endLBA-data->entry[i].startLBA), buf0,
+(unsigned long long)(data->entry[i].endLBA-data->entry[i].startLBA+1), buf0,
 buf1);
 		}
 	}
