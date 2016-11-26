@@ -185,7 +185,7 @@ int main(int argc, char **argv)
 	} else devnew=devpri;
 
 	/* writegpt() will fail in this case, but not give a message */
-	if(lseek(dev, -(newpri->head.myLBA+newpri->head.altLBA)*devpri->blocksz, SEEK_END)!=0) {
+	if(lseek64(dev, -(newpri->head.myLBA+newpri->head.altLBA)*devpri->blocksz, SEEK_END)!=0) {
 		fprintf(stderr, "Primary and/or backup GPT LBAs do not match size of media, cannot continue.\n");
 		exit(128);
 	}

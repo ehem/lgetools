@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 		free(alt);
 	} else printf("Second GPT is absent!\n");
 
-	printf("Found v%hu.%hu %s GPT in \"%s\" (%zd sector size)\n",
+	printf("Found v%hu.%hu %s GPT in \"%s\" (%jd sector size)\n",
 data->head.major, data->head.minor,
 data->head.myLBA==1?"primary":"backup", argv[1], data->blocksz);
 	uuid_unparse(data->head.diskUuid, buf0);
