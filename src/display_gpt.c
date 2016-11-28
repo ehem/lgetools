@@ -30,24 +30,45 @@
 #include "gpt.h"
 
 
+static const char *progname;
+
+static bool display_gpt(const char *);
+
+
 int main(int argc, char **argv)
+{
+	int ret=0;
+
+	progname=argv[0];
+
+	if(argc<2) {
+		fprintf(stderr, "%s <GPT file(s)>\n", progname);
+		exit(1);
+	}
+
+	--argc;
+	++argv;
+
+	do if(!display_gpt(*argv)) ret=1; while(--argc);
+
+	return ret;
+}
+
+
+static bool display_gpt(const char *filename)
 {
 	struct gpt_data *data, *alt;
 	int f;
 	char buf0[37], buf1[37];
 	int i;
 
-	if(argc!=2) {
-		fprintf(stderr, "%s <GPT file>\n", argv[0]);
-		exit(128);
-	}
-	if((f=open(argv[1], O_RDONLY))<0) {
-		fprintf(stderr, "%s: open() failed: %s\n", argv[0], strerror(errno));
-		exit(4);
+	if((f=open(filename, O_RDONLY|O_LARGEFILE))<0) {
+		fprintf(stderr, "%s: open() failed: %s\n", progname, strerror(errno));
+		return false;
 	}
 	if(!(data=readgpt(f, GPT_ANY))) {
-		printf("No GPT found in \"%s\"\n", argv[1]);
-		return 1;
+		printf("No GPT found in \"%s\"\n", filename);
+		return false;
 	}
 
 	if((data->head.myLBA==1)&&(alt=readgpt(f, GPT_BACKUP))) {
@@ -58,7 +79,7 @@ int main(int argc, char **argv)
 
 	printf("Found v%hu.%hu %s GPT in \"%s\" (%jd sector size)\n",
 data->head.major, data->head.minor,
-data->head.myLBA==1?"primary":"backup", argv[1], data->blocksz);
+data->head.myLBA==1?"primary":"backup", filename, data->blocksz);
 	uuid_unparse(data->head.diskUuid, buf0);
 	printf("device=%s\nmyLBA=%llu altLBA=%llu dataStart=%llu "
 "dataEnd=%llu\n\n", buf0, (unsigned long long)data->head.myLBA,
@@ -82,6 +103,6 @@ buf1);
 	}
 
 	free(data);
-	return 0;
+	return true;
 }
 
