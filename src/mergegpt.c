@@ -220,10 +220,13 @@ int main(int argc, char **argv)
 	crc=crc32(0, (Byte *)new->entry, new->head.entrySize*new->head.entryCount);
 	crc^=new->head.entryCRC32;
 	for(i=new->head.entryCount-1; i>=0; --i) {
-		if(!memcmp("\0\0\0\0\0\0", (char *)new->entry[i].name+sizeof(new->entry[i].name)-6, 6)) {
-			crc=reverse_crc32(crc,
-(char *)(new->entry+new->head.entryCount)-((char *)new->entry[i].name+sizeof(new->entry[i].name)-4));
-			memcpy((char *)new->entry[i].name+sizeof(new->entry[i].name)-4, &crc, 4);
+		const size_t len=sizeof(new->entry[0].name)/sizeof(new->entry[0].name[0]);
+		/* merely need the string to not overlap the end */
+		if(new->entry[i].name[len-3]==0) {
+			/* note this MUST be aligned correctly! */
+			uint32_t *const ptr=(uint32_t *)(new->entry[i].name+len);
+			crc=reverse_crc32(crc, (char *)(new->entry+new->head.entryCount)-(char *)ptr-4);
+			ptr[-1]^=crc;
 			break;
 		}
 	}
