@@ -46,10 +46,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	--argc;
-	++argv;
-
-	do if(!display_gpt(*argv)) ret=1; while(--argc);
+	while(--argc) if(!display_gpt(*++argv)) ret=1;
 
 	return ret;
 }
