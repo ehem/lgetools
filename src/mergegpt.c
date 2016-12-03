@@ -225,7 +225,7 @@ int main(int argc, char **argv)
 		if(new->entry[i].name[len-3]==0) {
 			/* note this MUST be aligned correctly! */
 			uint32_t *const ptr=(uint32_t *)(new->entry[i].name+len);
-			crc=reverse_crc32(crc, (char *)(new->entry+new->head.entryCount)-(char *)ptr-4);
+			crc=reverse_crc32(crc, (char *)(new->entry+new->head.entryCount)-(char *)(ptr-1));
 			ptr[-1]^=crc;
 			break;
 		}
@@ -322,8 +322,9 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 		j=i;
 		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
 			++j;
-			if(j>new->head.entryCount) j=0;
+			if(j>=new->head.entryCount) j=0;
 
+/* FIXME: if(i>=new->head.entryCount) this will never terminate */
 			if(j==i) {
 				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
@@ -360,7 +361,7 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 		if(uuid_is_null(new->entry[i].type)) continue;
 
 		while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id))
-			if(++empty==dev->head.entryCount) {
+			if(++empty>=dev->head.entryCount) {
 				fprintf(stderr, "Ran out of spare entries in GPT, unable to continue\n");
 				return false;
 			}
@@ -413,7 +414,7 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 	}
 
 
-	for(i=new->head.entryCount; i>=0; --i) {
+	for(i=new->head.entryCount-1; i>=0; --i) {
 		int j;
 
 		if(uuid_is_null(new->entry[i].type)||uuid_is_null(new->entry[i].id)) continue;
@@ -421,13 +422,14 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 		j=i;
 		while(strcmp(new->entry[i].name, dev->entry[j].name)) {
 			--j;
-			if(j<0) j=origentries;
+			if(j<0) j=origentries-1;
 
+/* FIXME: if(i>=origentries) this will never terminate */
 			if(j==i) { /* absent from original GPT */
 
 				if(!uuid_is_null(dev->entry[i].type)&&!uuid_is_null(dev->entry[i].id)) {
 					while(!uuid_is_null(dev->entry[empty].type)&&!uuid_is_null(dev->entry[empty].id))
-						if(++empty==dev->head.entryCount) {
+						if(++empty>=dev->head.entryCount) {
 							fprintf(stderr, "Ran out of spare entries in GPT, unable to continue\n");
 							return false;
 						}
@@ -475,8 +477,9 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 		j=i;
 		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
 			++j;
-			if(j>new->head.entryCount) j=0;
+			if(j>=new->head.entryCount) j=0;
 
+/* FIXME: if(i>=new->head.entryCount) this will never terminate */
 			if(j==i) {
 				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
@@ -531,8 +534,9 @@ sizeof(struct gpt_entry)*(new->head.entryCount-dev->head.entryCount));
 		while(uuid_compare(dev->entry[i].type, new->entry[j].type)||
 strcmp(dev->entry[i].name, new->entry[j].name)) {
 			++j;
-			if(j>dev->head.entryCount) j=0;
+			if(j>=dev->head.entryCount) j=0;
 
+/* FIXME: if(i>=dev->head.entryCount) this will never terminate */
 			if(j==i) {
 				if(checkremove(dev->entry+i)) break;
 				fprintf(stderr, "ERROR: GPT to install lacks slice named \"%s\", cannot continue\n", dev->entry[i].name);
