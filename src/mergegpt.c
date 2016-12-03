@@ -38,6 +38,7 @@ int verbose=0;
 static bool mergegpt(int, struct gpt_data **, const struct gpt_data *);
 static bool hybridgpt(int, struct gpt_data **, const struct gpt_data *);
 static bool replacegpt(int, struct gpt_data **, const struct gpt_data *);
+static bool uuidcopygpt(int, struct gpt_data **, const struct gpt_data *);
 
 static bool checkmove(const struct gpt_entry *, const struct gpt_entry *);
 static bool checkremove(const struct gpt_entry *ent);
@@ -45,7 +46,8 @@ static bool checkremove(const struct gpt_entry *ent);
 
 int main(int argc, char **argv)
 {
-	enum {DEFAULT, REPLACE, MERGE, HYBRID} action=DEFAULT;
+	enum actions {DEFAULT, REPLACE, MERGE, HYBRID, UUIDONLYBAK};
+	enum actions action=DEFAULT;
 	bool testonly=false;
 	int opt;
 	struct gpt_data *devpri=NULL, *devsec=NULL, *newpri=NULL, *newsec=NULL;
@@ -56,29 +58,31 @@ int main(int argc, char **argv)
 	uint32_t crc;
 	int i;
 
-	while((opt=getopt(argc, argv, "hrmMtvq"))!=-1) {
+	while((opt=getopt(argc, argv, "hrmMqtUv"))!=-1) {
 		switch(opt) {
-		case 'r':
+			enum actions newaction;
+
+		checkaction:
 			if(action!=DEFAULT) {
-				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
+				fprintf(stderr, "Only one of -m, -M, -r, or -U can be used!\n");
 				exit(128);
 			}
-			action=REPLACE;
+			action=newaction;
 			break;
+
 		case 'm':
-			if(action!=DEFAULT) {
-				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
-				exit(128);
-			}
-			action=MERGE;
-			break;
+			newaction=MERGE;
+			goto checkaction;
 		case 'M':
-			if(action!=DEFAULT) {
-				fprintf(stderr, "Only one of -m, -M, or -r can be used!\n");
-				exit(128);
-			}
-			action=HYBRID;
-			break;
+			newaction=HYBRID;
+			goto checkaction;
+		case 'r':
+			newaction=REPLACE;
+			goto checkaction;
+		case 'U':
+			newaction=UUIDONLYBAK;
+			goto checkaction;
+
 		case 't':
 			testonly=true;
 			break;
@@ -98,12 +102,14 @@ int main(int argc, char **argv)
 "  -t                    test mode, do not write to media\n"
 "  -m                    merge GPT copies in\n"
 "  -M                    intermediate merge, incoming has more effect\n"
-"  -r                    replace GPT on device with GPT images from .bin files"
-"\n" "\n"
+"  -r                    replace GPT on device with GPT images from .bin files\n"
+"  -U                    UUID-only mode experiment\n"
+"\n"
 "Merge mode (-m) is the most conservative and should be safest.\n"
 "Intermediate merge mode (-M) is slightly less conservative, but should\n"
 "still be pretty safe.  Replacement mode (-r) is most risky and may or may\n"
-"not work depending upon how sensitive the firmware is.\n", argv[0]);
+"not work depending upon how sensitive the firmware is.  UUID-only mode(-U)\n"
+"is a new experimental mode for an alternative strategy.\n", argv[0]);
 			exit(opt=='h'?0:128);
 		}
 	}
@@ -197,6 +203,9 @@ int main(int argc, char **argv)
 
 	switch(action) {
 	case DEFAULT:
+		fprintf(stderr, "%s: No merging strategy selected, cannot continue\n", argv[0]);
+		exit(1);
+	break;
 	case MERGE:
 		mergefunc=mergegpt;
 	break;
@@ -205,6 +214,9 @@ int main(int argc, char **argv)
 	break;
 	case HYBRID:
 		mergefunc=hybridgpt;
+	break;
+	case UUIDONLYBAK:
+		mergefunc=uuidcopygpt;
 	break;
 	default:
 		fprintf(stderr, "%s: Internal error!", argv[0]);
@@ -552,6 +564,59 @@ strcmp(dev->entry[i].name, new->entry[j].name)) {
 	dev->head.entryCRC32=new->head.entryCRC32;
 
 	for(i=0; i<new->head.entryCount; ++i) dev->entry[i]=new->entry[i];
+
+	return true;
+}
+
+
+static bool uuidcopygpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+{
+	int i;
+	struct gpt_data *dev=*_dev;
+
+/* most of the original values are left alone, including the CRC; *
+* hopefully this makes the odds for recovery better */
+
+	/* this function never adds entries, so don't worry about expanding */
+
+	for(i=0; i<dev->head.entryCount; ++i) {
+		int j;
+
+		/* for the moment our primary target is the backup bootloader */
+		/* recovery is done to ensure we have something to boot */
+		if(strcmp(dev->entry[i].name+strlen(dev->entry[i].name)-3, "bak")&&strcmp(dev->entry[i].name, "recovery")) continue;
+
+		j=i;
+		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
+			--j;
+			if(j<0) j=new->head.entryCount-1;
+
+			/* FIXME: do something here */
+			if(j==i) {
+				fprintf(stderr, "\aWARNING: slice \"%s\" lacks any counterpart in GPT to merge!\n\n", dev->entry[i].name);
+				goto loopend;
+			}
+		}
+
+		/* warn if needed */
+		if(!checkmove(dev->entry+i, new->entry+j)) return false;
+
+		if(uuid_compare(dev->entry[i].type, new->entry[j].type)) {
+			char buf0[37], buf1[37];
+
+			uuid_unparse(dev->entry[i].type, buf0);
+			uuid_unparse(new->entry[j].type, buf1);
+
+			fprintf(stderr, "\aERROR: slice \"%s\" has differing type UUIDs between existing and incoming\n"
+"%s vs %s\n", dev->entry[i].name, buf0, buf1);
+
+			return false;
+		}
+
+		uuid_copy(dev->entry[i].id, new->entry[j].id);
+
+	loopend: ;
+	}
 
 	return true;
 }
