@@ -35,18 +35,24 @@
 int verbose=0;
 
 
-static bool mergegpt(int, struct gpt_data **, const struct gpt_data *);
-static bool hybridgpt(int, struct gpt_data **, const struct gpt_data *);
-static bool replacegpt(int, struct gpt_data **, const struct gpt_data *);
-static bool uuidcopygpt(int, struct gpt_data **, const struct gpt_data *);
+/* GPT modification functions */
+static bool mergegpt(struct gpt_data **dev, const struct gpt_data *new);
+static bool hybridgpt(struct gpt_data **dev, const struct gpt_data *new);
+static bool replacegpt(struct gpt_data **dev, const struct gpt_data *new);
+static bool uuidcopybak(struct gpt_data **dev, const struct gpt_data *new);
+static bool uuidcopyfull(struct gpt_data **dev, const struct gpt_data *new);
 
-static bool checkmove(const struct gpt_entry *, const struct gpt_entry *);
+/* utilities for modification */
+static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth);
 static bool checkremove(const struct gpt_entry *ent);
+
+static bool matchlist(const char *const *const list, unsigned long cnt,
+const char *const key);
 
 
 int main(int argc, char **argv)
 {
-	enum actions {DEFAULT, REPLACE, MERGE, HYBRID, UUIDONLYBAK};
+	enum actions {DEFAULT, REPLACE, MERGE, HYBRID, UUIDBAK, UUIDFULL};
 	enum actions action=DEFAULT;
 	bool testonly=false;
 	int opt;
@@ -54,11 +60,11 @@ int main(int argc, char **argv)
 	struct gpt_data *devnew;
 	struct _gpt_data *new;
 	int dev, new0, new1=-1;
-	bool (*mergefunc)(int, struct gpt_data **, const struct gpt_data *);
+	bool (*mergefunc)(struct gpt_data **, const struct gpt_data *);
 	uint32_t crc;
 	int i;
 
-	while((opt=getopt(argc, argv, "hrmMqtUv"))!=-1) {
+	while((opt=getopt(argc, argv, "hrmMqtuUv"))!=-1) {
 		switch(opt) {
 			enum actions newaction;
 
@@ -79,8 +85,11 @@ int main(int argc, char **argv)
 		case 'r':
 			newaction=REPLACE;
 			goto checkaction;
+		case 'u':
+			newaction=UUIDBAK;
+			goto checkaction;
 		case 'U':
-			newaction=UUIDONLYBAK;
+			newaction=UUIDFULL;
 			goto checkaction;
 
 		case 't':
@@ -215,15 +224,18 @@ int main(int argc, char **argv)
 	case HYBRID:
 		mergefunc=hybridgpt;
 	break;
-	case UUIDONLYBAK:
-		mergefunc=uuidcopygpt;
+	case UUIDBAK:
+		mergefunc=uuidcopybak;
+	break;
+	case UUIDFULL:
+		mergefunc=uuidcopyfull;
 	break;
 	default:
 		fprintf(stderr, "%s: Internal error!", argv[0]);
 		exit(-1);
 	}
 
-	if(!mergefunc(dev, &devnew, newpri)) exit(2);
+	if(!mergefunc(&devnew, newpri)) exit(2);
 
 
 	new=(struct _gpt_data *)devnew;
@@ -284,7 +296,7 @@ int main(int argc, char **argv)
 }
 
 
-static bool mergegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+static bool mergegpt(struct gpt_data **_dev, const struct gpt_data *new)
 {
 	int i;
 	int empty=0;
@@ -391,7 +403,7 @@ fail:
 }
 
 
-static bool hybridgpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+static bool hybridgpt(struct gpt_data **_dev, const struct gpt_data *new)
 {
 	int i;
 	int empty=0;
@@ -504,7 +516,7 @@ sizeof(struct gpt_entry)*(needentries-origentries));
 }
 
 
-static bool replacegpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+static bool replacegpt(struct gpt_data **_dev, const struct gpt_data *new)
 {
 	int i;
 	struct gpt_data *dev=*_dev;
@@ -569,7 +581,7 @@ strcmp(dev->entry[i].name, new->entry[j].name)) {
 }
 
 
-static bool uuidcopygpt(int fd, struct gpt_data **_dev, const struct gpt_data *new)
+static bool uuidcopybak(struct gpt_data **_dev, const struct gpt_data *new)
 {
 	int i;
 	struct gpt_data *dev=*_dev;
@@ -622,6 +634,36 @@ static bool uuidcopygpt(int fd, struct gpt_data **_dev, const struct gpt_data *n
 }
 
 
+static bool uuidcopyfull(struct gpt_data **_dev, const struct gpt_data *new)
+{
+	char *targets[]={
+		"aboot",
+		"abootbak",
+//		"boot",
+//		"factory",
+		"hyp",
+		"hypbak",
+//		"laf",
+		"pmic",
+		"pmicbak",
+		"raw_resources",
+		"raw_resourcesbak",
+//		"recovery",
+		"rpm",
+		"rpmbak",
+		"sbl1",
+		"sbl1bak",
+		"sdi",
+		"sdibak",
+		"tz",
+		"tzbak",
+	};
+
+	fprintf(stderr, "full UUID copying mode not yet implemented\n");
+	return false;
+}
+
+
 static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
 {
 	char buf[128];
@@ -653,7 +695,6 @@ static bool checkmove(const struct gpt_entry *ent, const struct gpt_entry *oth)
 static bool checkremove(const struct gpt_entry *ent)
 {
 	const char *const okay[]={"cust", "eri", "operatorlogging"};
-	unsigned int lo, hi, mid;
 	char buf[128];
 
 	if(!strcmp(ent->name+strlen(ent->name)-3, "bak")) {
@@ -661,16 +702,10 @@ static bool checkremove(const struct gpt_entry *ent)
 		return false;
 	}
 
-	lo=0; hi=sizeof(okay)/sizeof(okay[0]);
-	do {
-		int cmp;
-		mid=((lo+hi)>>1);
-		if(!(cmp=strcmp(ent->name, okay[mid]))) {
-			fprintf(stderr, "\aWARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n\n", ent->name);
-			return true;
-		} else if(cmp<0) hi=mid;
-		else lo=mid+1;
-	} while(lo!=hi);
+	if(matchlist(okay, sizeof(okay)/sizeof(0[okay]), ent->name)) {
+		fprintf(stderr, "\aWARNING: Going to remove slice \"%s\", which is suspected safe, but dangerous!\n\n", ent->name);
+		return true;
+	}
 
 	fprintf(stderr, "\aDANGER: Need to remove slice \"%s\", which is UNSAFE, are you sure?\n\n", ent->name);
 
@@ -681,5 +716,22 @@ static bool checkremove(const struct gpt_entry *ent)
 	}
 
 	return true;
+}
+
+
+static bool matchlist(const char *const *const list, unsigned long cnt,
+const char *const key)
+{
+	unsigned long lo=0, hi=cnt, mid;
+
+	do {
+		int cmp;
+		mid=((lo+hi)>>1);
+		if(!(cmp=strcmp(key, list[mid]))) return true;
+		else if(cmp<0) hi=mid;
+		else lo=mid+1;
+	} while(lo!=hi);
+
+	return false;
 }
 
