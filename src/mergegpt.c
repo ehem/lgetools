@@ -639,16 +639,16 @@ static bool uuidcopyfull(struct gpt_data **_dev, const struct gpt_data *new)
 	char *targets[]={
 		"aboot",
 		"abootbak",
-//		"boot",
-//		"factory",
+/**/		"boot",
+/**/		"factory",
 		"hyp",
 		"hypbak",
-//		"laf",
+/**/		"laf",
 		"pmic",
 		"pmicbak",
 		"raw_resources",
 		"raw_resourcesbak",
-//		"recovery",
+/**/		"recovery",
 		"rpm",
 		"rpmbak",
 		"sbl1",
@@ -659,8 +659,55 @@ static bool uuidcopyfull(struct gpt_data **_dev, const struct gpt_data *new)
 		"tzbak",
 	};
 
-	fprintf(stderr, "full UUID copying mode not yet implemented\n");
-	return false;
+	int i;
+	struct gpt_data *dev=*_dev;
+
+/* most of the original values are left alone, including the CRC; *
+* hopefully this makes the odds for recovery better */
+
+	/* this function never adds entries, so don't worry about expanding */
+
+	for(i=0; i<dev->head.entryCount; ++i) {
+		int j;
+
+		/* for the moment our primary target is the backup bootloader */
+		/* recovery is done to ensure we have something to boot */
+		if(!matchlist(targets, sizeof(targets)/sizeof(0[targets]),
+dev->entry[i].name)) continue;
+
+		j=i;
+		while(strcmp(dev->entry[i].name, new->entry[j].name)) {
+			--j;
+			if(j<0) j=new->head.entryCount-1;
+
+			/* FIXME: do something here */
+			if(j==i) {
+				fprintf(stderr, "\aWARNING: slice \"%s\" lacks any counterpart in GPT to merge!\n\n", dev->entry[i].name);
+				goto loopend;
+			}
+		}
+
+		/* warn if needed */
+		if(!checkmove(dev->entry+i, new->entry+j)) return false;
+
+		if(uuid_compare(dev->entry[i].type, new->entry[j].type)) {
+			char buf0[37], buf1[37];
+
+			uuid_unparse(dev->entry[i].type, buf0);
+			uuid_unparse(new->entry[j].type, buf1);
+
+			fprintf(stderr, "\aERROR: slice \"%s\" has differing type UUIDs between existing and incoming\n"
+"%s vs %s\n", dev->entry[i].name, buf0, buf1);
+
+			return false;
+		}
+
+		uuid_copy(dev->entry[i].id, new->entry[j].id);
+
+	loopend: ;
+	}
+
+	return true;
 }
 
 
