@@ -86,12 +86,12 @@ data->head.myLBA==1?"primary":"backup", filename, data->blocksz);
 
 	for(i=0; i<data->head.entryCount; ++i) {
 		if(uuid_is_null(data->entry[i].id)) {
-			printf("Name: <empty entry>\n");
+			printf("Name(%d): <empty entry>\n", i+1);
 		} else {
 			uuid_unparse(data->entry[i].type, buf0);
 			uuid_unparse(data->entry[i].id, buf1);
-			printf("Name: \"%s\" start=%llu end=%llu count=%llu\n"
-"typ=%s id=%s\n", data->entry[i].name,
+			printf("Name(%d): \"%s\" start=%llu end=%llu count=%llu\n"
+"typ=%s id=%s\n", i+1, data->entry[i].name,
 (unsigned long long)data->entry[i].startLBA,
 (unsigned long long)data->entry[i].endLBA,
 (unsigned long long)(data->entry[i].endLBA-data->entry[i].startLBA+1), buf0,
