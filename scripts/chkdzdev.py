@@ -200,18 +200,18 @@ def setDevice(name, device, setFactory):
 	entry = [x for x in dz_entry]
 
 	# The pattern appears to be "H" devices include "LG-", others do not
-	entry[4] = "LG-" + device if device[0] == "H" else device
+	entry[4] = (b"LG-" + device) if device[0] == (ord('H') if sys.version_info >= (3, 0) else 'H') else device
 
 	entry[4] = entry[4].ljust(32, b'\x00')
 
 	old_factory = entry[5].rstrip(b'\x00')
-	if old_device[0] == "H":
+	if old_device[0] == (ord('H') if sys.version_info >= (3, 0) else 'H'):
 		new_factory = device + old_factory[len(old_device)+2:]
 	else:
 		new_factory = device + old_factory[len(old_device):]
 
-	if device[0] == "H":
-		new_factory = "LG" + new_factory
+	if device[0] == (ord('H') if sys.version_info >= (3, 0) else 'H'):
+		new_factory = b"LG" + new_factory
 
 	if setFactory:
 		print('File "{:s}": old factory version="{:s}", new factory version="{:s}"'.format(name, old_factory.decode("utf8"), new_factory.decode("utf8")))
