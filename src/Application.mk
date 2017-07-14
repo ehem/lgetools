@@ -1,4 +1,5 @@
-APP_PLATFORM := 21
-#APP_ABI := x86 x86_64 armeabi arm64-v8a mips mips64
-APP_ABI := x86 armeabi mips
+#APP_PROJECT_PATH := src
+APP_PLATFORM := android-23
+#APP_OPTIM := release
+APP_ABI := all
 
