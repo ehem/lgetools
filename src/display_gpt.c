@@ -19,7 +19,9 @@
 
 #define _LARGEFILE64_SOURCE
 
+#ifdef USE_ICONV
 #include <iconv.h>
+#endif
 #include <stdbool.h>
 #include <fcntl.h>
 #include <stdio.h>
